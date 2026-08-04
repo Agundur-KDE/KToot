@@ -30,23 +30,32 @@ function secondsSince(isoString) {
     return Math.max(0, Math.floor((Date.now() - Date.parse(isoString)) / 1000));
 }
 
+// "Activity on your posts" (mention/favourite/reblog) all share the KToot
+// waves glyph — simpler than three unrelated theme icons. Follow is the odd
+// one out (not post-related) and keeps a normal person icon.
 function typeIcon(type) {
     switch (type) {
-    case "mention": return "mail-replied-symbolic";
     case "follow": return "list-add-user";
-    case "favourite": return "starred-symbolic";
-    case "reblog": return "media-playlist-repeat";
+    case "mention":
+    case "favourite":
+    case "reblog":
+    case "quote":
+        // ListModel.append() loses the QUrl type from Qt.resolvedUrl() —
+        // store as a plain string instead.
+        return String(Qt.resolvedUrl("../icons/ktoot-waves.png"));
     default: return "ktoot";
     }
 }
 
 // Notification types we know how to handle. Anything else (poll, status,
 // follow_request, update, ...) is always excluded server-side.
-const KNOWN_TYPES = ["mention", "follow", "favourite", "reblog"];
+const KNOWN_TYPES = ["mention", "quote", "follow", "favourite", "reblog"];
 
 function excludeTypes(cfg) {
     const excl = [];
-    if (!cfg.NotifyMentions) excl.push("mention");
+    // "quote" (Mastodon's quote-post notification) rides on the Mentions
+    // toggle — both mean "someone referenced your post", no separate UI for it.
+    if (!cfg.NotifyMentions) { excl.push("mention"); excl.push("quote"); }
     if (!cfg.NotifyFollows) excl.push("follow");
     if (!cfg.NotifyFavourites) excl.push("favourite");
     if (!cfg.NotifyReblogs) excl.push("reblog");

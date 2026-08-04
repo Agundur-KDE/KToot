@@ -166,6 +166,7 @@ PlasmoidItem {
         RowLayout {
             visible: root.accountConnected
             Layout.fillWidth: true
+            spacing: Kirigami.Units.gridUnit
 
             Kirigami.Icon {
                 source: "ktoot"
