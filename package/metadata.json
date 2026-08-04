@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "info@agundur.de",
+                "Name": "Agundur"
+            }
+        ],
+        "BugReportUrl": "https://github.com/Agundur-KDE/KDE-Plasma-Plasmoid-template/issues",
+        "Category": "Status Information",
+        "Description": "A skeleton to get you started building a Plasmoid",
+        "Icon": "kdesrc-build",
+        "Id": "de.agundur.myplasmoid",
+        "License": "GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL",
+        "Name": "KDE-Template",
+        "Version": "0.1",
+        "Website": "https://github.com/Agundur-KDE/KDE-Plasma-Plasmoid-template"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
