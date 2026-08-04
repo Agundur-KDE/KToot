@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <kcfg xmlns="http://www.kde.org/standards/kcfg/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0       http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
     <kcfgfile name=""/>
-    <group name="Network">
-        <entry name="Host" type="String">
-            <default>127.0.0.1</default>
+    <group name="Account">
+        <entry name="Instance" type="String">
+            <default>https://mastodon.social</default>
+        </entry>
+        <entry name="AccountHandle" type="String">
+            <default></default>
+        </entry>
+    </group>
+    <group name="Notifications">
+        <entry name="NotifyMentions" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="NotifyFollows" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="NotifyFavourites" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="NotifyReblogs" type="Bool">
+            <default>true</default>
         </entry>
     </group>
 </kcfg>

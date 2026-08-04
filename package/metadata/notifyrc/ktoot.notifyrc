@@ -1,0 +1,10 @@
+[Global]
+IconName=ktoot
+Name=KToot
+
+[Event/mention]
+Name=Mastodon Mention
+Comment=Someone mentioned or replied to you on Mastodon
+Icon=ktoot
+Sound=message-new-instant
+Action=Popup

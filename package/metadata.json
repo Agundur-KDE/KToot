@@ -3,19 +3,19 @@
     "KPlugin": {
         "Authors": [
             {
-                "Email": "info@agundur.de",
-                "Name": "Agundur"
+                "Name": "Alec",
+                "Email": "info@agundur.de"
             }
         ],
-        "BugReportUrl": "https://github.com/Agundur-KDE/KDE-Plasma-Plasmoid-template/issues",
+        "BugReportUrl": "https://github.com/Agundur-KDE/KToot/issues",
         "Category": "Status Information",
-        "Description": "A skeleton to get you started building a Plasmoid",
-        "Icon": "kdesrc-build",
-        "Id": "de.agundur.myplasmoid",
+        "Description": "Mastodon notification widget for KDE Plasma",
+        "Icon": "ktoot",
+        "Id": "de.agundur.ktoot",
         "License": "GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL",
-        "Name": "KDE-Template",
+        "Name": "KToot",
         "Version": "0.1",
-        "Website": "https://github.com/Agundur-KDE/KDE-Plasma-Plasmoid-template"
+        "Website": "https://github.com/Agundur-KDE/KToot"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
 }
