@@ -128,13 +128,10 @@ PlasmoidItem {
                     }
                 }
 
-                if (root.onDesktop) {
-                    if (unread > 0)
-                        Mastodon.postMarker(instance, token, newestId);
-                    unreadCount = 0;
-                } else {
-                    unreadCount = unread;
-                }
+                if (unread > 0)
+                    Mastodon.postMarker(instance, token, newestId);
+
+                unreadCount = root.onDesktop ? 0 : unread;
             });
         });
     }
