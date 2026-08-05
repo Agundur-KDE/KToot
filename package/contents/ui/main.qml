@@ -17,6 +17,7 @@ PlasmoidItem {
 
     property string accessToken: ""
     property bool tokenLoaded: false
+    property bool sessionActive: false
     property int followersCount: 0
     property int unreadCount: 0
 
@@ -38,6 +39,7 @@ PlasmoidItem {
         componentName: "ktoot"
         eventId: "mention"
         iconName: "ktoot"
+        flags: Notification.Persistent
     }
 
     function relativeTime(iso) {
@@ -74,6 +76,16 @@ PlasmoidItem {
     onInstanceChanged: {
         tokenLoaded = false;
         accessToken = "";
+    }
+
+    function connect() {
+        sessionActive = true;
+    }
+
+    function disconnect() {
+        sessionActive = false;
+        accessToken = "";
+        tokenLoaded = false;
     }
 
     function markAllRead() {
@@ -138,7 +150,7 @@ PlasmoidItem {
 
     Timer {
         interval: 75000
-        running: root.accountConnected
+        running: root.accountConnected && root.sessionActive
         repeat: true
         triggeredOnStart: true
         onTriggered: root.poll()
@@ -157,7 +169,12 @@ PlasmoidItem {
             Layout.fillHeight: true
             icon.name: "im-user"
             text: i18n("Kein Mastodon-Account verbunden")
-            explanation: i18n("Rechtsklick → Einstellungen, um Instance und Zugriffstoken einzutragen.")
+            explanation: i18n("Instance und Zugriffstoken eintragen.")
+            helpfulAction: Kirigami.Action {
+                icon.name: "configure"
+                text: i18n("Konfigurieren")
+                onTriggered: Plasmoid.internalAction("configure").trigger()
+            }
         }
 
         RowLayout {
@@ -187,15 +204,43 @@ PlasmoidItem {
                     font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
             }
+
+            PlasmaComponents.ToolButton {
+                icon.name: "view-refresh"
+                display: PlasmaComponents.AbstractButton.IconOnly
+                visible: root.sessionActive
+                onClicked: root.poll()
+                PlasmaComponents.ToolTip.text: i18n("Aktualisieren")
+                PlasmaComponents.ToolTip.visible: hovered
+            }
+
+            PlasmaComponents.ToolButton {
+                icon.name: root.sessionActive ? "network-disconnect" : "network-connect"
+                text: root.sessionActive ? i18n("Disconnect") : i18n("Connect")
+                onClicked: root.sessionActive ? root.disconnect() : root.connect()
+            }
         }
 
         Kirigami.Separator {
-            visible: root.accountConnected
+            visible: root.accountConnected && root.sessionActive
             Layout.fillWidth: true
         }
 
         PlasmaComponents.Label {
-            visible: root.accountConnected && root.notificationsModel.count === 0
+            visible: root.accountConnected && !root.sessionActive
+            Layout.fillWidth: true
+            text: i18n("Getrennt — „Connect“ für aktuelle Benachrichtigungen")
+            opacity: 0.6
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        Item {
+            Layout.fillHeight: root.accountConnected && !root.sessionActive
+            Layout.fillWidth: true
+        }
+
+        PlasmaComponents.Label {
+            visible: root.accountConnected && root.sessionActive && root.notificationsModel.count === 0
             Layout.fillWidth: true
             text: i18n("Keine aktuellen Benachrichtigungen")
             opacity: 0.6
@@ -203,7 +248,7 @@ PlasmoidItem {
         }
 
         ListView {
-            visible: root.accountConnected
+            visible: root.accountConnected && root.sessionActive
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -255,7 +300,7 @@ PlasmoidItem {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.markAllRead()
+            onClicked: root.sessionActive ? root.markAllRead() : root.connect()
         }
 
         Kirigami.Icon {
