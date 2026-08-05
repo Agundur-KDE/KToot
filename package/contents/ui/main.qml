@@ -92,6 +92,7 @@ PlasmoidItem {
         sessionActive = false;
         accessToken = "";
         tokenLoaded = false;
+        unreadCount = 0;
     }
 
     function markAllRead() {
@@ -110,15 +111,21 @@ PlasmoidItem {
             return;
 
         Mastodon.fetchAccount(instance, token, function (err, account) {
-            if (!err && account)
+            if (!err && account && root.sessionActive)
                 followersCount = account.followers_count;
         });
 
         Mastodon.fetchMarker(instance, token, function (markerErr, knownMarker) {
-            const isFirstEverPoll = !markerErr && knownMarker === null;
+            // Marker fetch failed: we can't tell what's actually new, so
+            // treating a missing marker as "0" would flag the whole page as
+            // unread. Skip this cycle instead, retry on the next tick.
+            if (markerErr || !root.sessionActive)
+                return;
+
+            const isFirstEverPoll = knownMarker === null;
 
             Mastodon.fetchNotifications(instance, token, Mastodon.excludeTypes(Plasmoid.configuration), function (err, items) {
-                if (err || !items)
+                if (err || !items || !root.sessionActive)
                     return;
 
                 notificationsModel.clear();
