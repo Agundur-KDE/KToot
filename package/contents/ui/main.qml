@@ -65,6 +65,12 @@ PlasmoidItem {
         mentionNotification.sendEvent();
     }
 
+    function notifySummary(count) {
+        mentionNotification.title = i18np("%1 neue Benachrichtigung", "%1 neue Benachrichtigungen", count);
+        mentionNotification.text = i18n("Popup öffnen für Details");
+        mentionNotification.sendEvent();
+    }
+
     function ensureToken() {
         if (!tokenLoaded) {
             accessToken = WalletHelper.readToken(instance);
@@ -132,12 +138,14 @@ PlasmoidItem {
                     return;
                 }
 
-                let unread = 0;
-                for (const it of items) {
-                    if (Mastodon.idGreaterThan(it.id, knownMarker)) {
-                        unread++;
+                const newItems = items.filter(it => Mastodon.idGreaterThan(it.id, knownMarker));
+                const unread = newItems.length;
+
+                if (unread > 3) {
+                    root.notifySummary(unread);
+                } else {
+                    for (const it of newItems)
                         root.notifyItem(it);
-                    }
                 }
 
                 if (unread > 0)
