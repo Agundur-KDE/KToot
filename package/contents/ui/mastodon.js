@@ -128,6 +128,12 @@ function postMarker(instance, token, notifId) {
     xhr.open("POST", instance + "/api/v1/markers");
     xhr.setRequestHeader("Authorization", "Bearer " + token);
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== XMLHttpRequest.DONE)
+            return;
+        if (xhr.status < 200 || xhr.status >= 300)
+            console.warn("KToot: postMarker failed with HTTP " + xhr.status + " — " + xhr.responseText);
+    };
     xhr.send("notifications[last_read_id]=" + encodeURIComponent(notifId));
 }
 
