@@ -29,6 +29,17 @@ WalletHelper::~WalletHelper()
 
 Wallet *WalletHelper::wallet()
 {
+    // A cached handle can go stale without any signal reaching us — e.g.
+    // kwalletd6 restarting/crashing while this plugin stays loaded (real
+    // case hit during testing: killing kwalletd6 to clear the timer-flood
+    // left a dangling handle, and every call after that silently failed
+    // with "could not create folder"). isOpen() catches that; discard and
+    // reopen instead of returning a handle that looks valid but isn't.
+    if (m_wallet && !m_wallet->isOpen()) {
+        delete m_wallet;
+        m_wallet = nullptr;
+    }
+
     if (!m_wallet)
         m_wallet = Wallet::openWallet(Wallet::LocalWallet(), 0, Wallet::Synchronous);
     return m_wallet;
