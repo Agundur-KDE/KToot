@@ -5,6 +5,7 @@
 #include "WalletHelper.h"
 
 #include <KWallet>
+#include <QDebug>
 
 using KWallet::Wallet;
 
@@ -18,48 +19,65 @@ WalletHelper::WalletHelper(QObject *parent)
 {
 }
 
-bool WalletHelper::saveToken(const QString &instance, const QString &token)
+WalletHelper::~WalletHelper()
 {
-    Wallet *wallet = Wallet::openWallet(Wallet::LocalWallet(), 0, Wallet::Synchronous);
-    if (!wallet)
+    // Per KWallet API docs, deleting the Wallet is the correct way to close
+    // it (its destructor unregisters the handle with kwalletd) — no
+    // separate closeWallet() call needed or wanted here.
+    delete m_wallet;
+}
+
+Wallet *WalletHelper::wallet()
+{
+    if (!m_wallet)
+        m_wallet = Wallet::openWallet(Wallet::LocalWallet(), 0, Wallet::Synchronous);
+    return m_wallet;
+}
+
+bool WalletHelper::ensureFolder()
+{
+    Wallet *w = wallet();
+    if (!w)
         return false;
 
-    if (!wallet->hasFolder(QLatin1String(FOLDER)))
-        wallet->createFolder(QLatin1String(FOLDER));
-    wallet->setFolder(QLatin1String(FOLDER));
+    if (!w->hasFolder(QLatin1String(FOLDER)) && !w->createFolder(QLatin1String(FOLDER))) {
+        qWarning() << "WalletHelper: could not create the" << FOLDER << "folder";
+        return false;
+    }
 
-    const bool ok = wallet->writePassword(instance, token) == 0;
-    delete wallet;
-    return ok;
+    if (!w->setFolder(QLatin1String(FOLDER))) {
+        qWarning() << "WalletHelper: could not select the" << FOLDER << "folder";
+        return false;
+    }
+
+    return true;
+}
+
+bool WalletHelper::saveToken(const QString &instance, const QString &token)
+{
+    if (!ensureFolder())
+        return false;
+
+    return wallet()->writePassword(instance, token) == 0;
 }
 
 QString WalletHelper::readToken(const QString &instance)
 {
-    Wallet *wallet = Wallet::openWallet(Wallet::LocalWallet(), 0, Wallet::Synchronous);
-    if (!wallet)
+    if (!ensureFolder())
         return QString();
-
-    if (!wallet->hasFolder(QLatin1String(FOLDER))) {
-        delete wallet;
-        return QString();
-    }
-    wallet->setFolder(QLatin1String(FOLDER));
 
     QString token;
-    wallet->readPassword(instance, token);
-    delete wallet;
+    if (wallet()->readPassword(instance, token) != 0)
+        return QString();
+
     return token;
 }
 
 void WalletHelper::removeToken(const QString &instance)
 {
-    Wallet *wallet = Wallet::openWallet(Wallet::LocalWallet(), 0, Wallet::Synchronous);
-    if (!wallet)
+    if (!ensureFolder())
         return;
 
-    if (wallet->hasFolder(QLatin1String(FOLDER))) {
-        wallet->setFolder(QLatin1String(FOLDER));
-        wallet->removeEntry(instance);
-    }
-    delete wallet;
+    if (wallet()->removeEntry(instance) != 0)
+        qWarning() << "WalletHelper: could not remove the stored token for" << instance;
 }
