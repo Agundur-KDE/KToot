@@ -5,11 +5,14 @@ import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 import org.kde.notification
-import de.agundur.ktoot
 import "mastodon.js" as Mastodon
 
 PlasmoidItem {
     id: root
+
+    WalletDBus {
+        id: wallet
+    }
 
     readonly property string instance: Plasmoid.configuration.Instance
     readonly property bool accountConnected: Plasmoid.configuration.AccountHandle.length > 0
@@ -91,12 +94,16 @@ PlasmoidItem {
         }
     }
 
-    function ensureToken() {
-        if (!tokenLoaded) {
-            accessToken = WalletHelper.readToken(instance);
-            tokenLoaded = true;
+    function ensureToken(callback) {
+        if (tokenLoaded) {
+            callback(accessToken);
+            return;
         }
-        return accessToken;
+        wallet.readToken(instance, function (token) {
+            accessToken = token;
+            tokenLoaded = true;
+            callback(token);
+        });
     }
 
     onInstanceChanged: {
@@ -125,104 +132,110 @@ PlasmoidItem {
     }
 
     function markAllRead() {
-        const token = ensureToken();
-        if (!token || notificationsModel.count === 0)
-            return;
-        Mastodon.postMarker(instance, token, notificationsModel.get(0).notifId);
-        unreadCount = 0;
+        root.ensureToken(function (token) {
+            if (!token || notificationsModel.count === 0)
+                return;
+            Mastodon.postMarker(instance, token, notificationsModel.get(0).notifId);
+            unreadCount = 0;
+        });
     }
 
     function poll() {
         if (!accountConnected)
             return;
-        const token = ensureToken();
-        if (!token)
-            return;
-
-        // Captured now, checked in every callback below: a response that
-        // arrives after the instance/session has since changed is stale and
-        // must not touch state for the new one.
-        const gen = root.pollGeneration;
-
-        Mastodon.fetchAccount(instance, token, function (err, account) {
-            if (!root.sessionActive || gen !== root.pollGeneration)
-                return;
-            if (err) {
-                root.errorMessage = root.describeError(err);
-                return;
-            }
-            if (account)
-                followersCount = account.followers_count;
-        });
-
-        Mastodon.fetchMarker(instance, token, function (markerErr, knownMarker) {
-            if (!root.sessionActive || gen !== root.pollGeneration)
+        root.ensureToken(function (token) {
+            if (!token)
                 return;
 
-            // Marker fetch failed: we can't tell what's actually new, so
-            // treating a missing marker as "0" would flag the whole page as
-            // unread. Skip this cycle instead, retry on the next tick.
-            if (markerErr) {
-                root.errorMessage = root.describeError(markerErr);
-                return;
-            }
+            // Captured now, checked in every callback below: a response
+            // that arrives after the instance/session has since changed is
+            // stale and must not touch state for the new one.
+            const gen = root.pollGeneration;
 
-            const isFirstEverPoll = knownMarker === null;
-            const excludeTypesList = Mastodon.excludeTypes(Plasmoid.configuration);
-
-            // Display always shows the newest items regardless of read
-            // state, so it's fetched separately from unread detection below.
-            Mastodon.fetchNotifications(instance, token, excludeTypesList, function (err, items) {
+            Mastodon.fetchAccount(instance, token, function (err, account) {
                 if (!root.sessionActive || gen !== root.pollGeneration)
                     return;
-                if (err || !Array.isArray(items)) {
+                if (err) {
                     root.errorMessage = root.describeError(err);
                     return;
                 }
-                root.errorMessage = "";
-
-                notificationsModel.clear();
-                for (let i = 0; i < Math.min(3, items.length); i++)
-                    notificationsModel.append(Mastodon.toModelEntry(items[i]));
-
-                if (items.length > 0 && isFirstEverPoll) {
-                    // Never polled this account before: establish a baseline
-                    // instead of dumping the whole backlog as "new".
-                    Mastodon.postMarker(instance, token, items[0].id);
-                    unreadCount = 0;
-                }
+                if (account)
+                    followersCount = account.followers_count;
             });
 
-            if (isFirstEverPoll)
-                return;
-
-            // Paginated, server-filtered (min_id) fetch — a single limit=20
-            // page here would silently drop anything past the 20th item
-            // whenever more than 20 notifications piled up since the last
-            // poll, so the actual unread count/list and the marker we
-            // advance to must come from this, not from the display fetch.
-            Mastodon.fetchNewNotifications(instance, token, knownMarker, excludeTypesList, function (err, newItems) {
+            Mastodon.fetchMarker(instance, token, function (markerErr, knownMarker) {
                 if (!root.sessionActive || gen !== root.pollGeneration)
                     return;
-                if (err || !Array.isArray(newItems)) {
-                    root.errorMessage = root.describeError(err);
+
+                // Marker fetch failed: we can't tell what's actually new,
+                // so treating a missing marker as "0" would flag the whole
+                // page as unread. Skip this cycle instead, retry on the
+                // next tick.
+                if (markerErr) {
+                    root.errorMessage = root.describeError(markerErr);
                     return;
                 }
-                root.errorMessage = "";
 
-                const unread = newItems.length;
-                if (unread === 0)
+                const isFirstEverPoll = knownMarker === null;
+                const excludeTypesList = Mastodon.excludeTypes(Plasmoid.configuration);
+
+                // Display always shows the newest items regardless of read
+                // state, so it's fetched separately from unread detection
+                // below.
+                Mastodon.fetchNotifications(instance, token, excludeTypesList, function (err, items) {
+                    if (!root.sessionActive || gen !== root.pollGeneration)
+                        return;
+                    if (err || !Array.isArray(items)) {
+                        root.errorMessage = root.describeError(err);
+                        return;
+                    }
+                    root.errorMessage = "";
+
+                    notificationsModel.clear();
+                    for (let i = 0; i < Math.min(3, items.length); i++)
+                        notificationsModel.append(Mastodon.toModelEntry(items[i]));
+
+                    if (items.length > 0 && isFirstEverPoll) {
+                        // Never polled this account before: establish a
+                        // baseline instead of dumping the whole backlog as
+                        // "new".
+                        Mastodon.postMarker(instance, token, items[0].id);
+                        unreadCount = 0;
+                    }
+                });
+
+                if (isFirstEverPoll)
                     return;
 
-                if (unread > 3) {
-                    root.notifySummary(unread);
-                } else {
-                    for (const it of newItems)
-                        root.notifyItem(it);
-                }
+                // Paginated, server-filtered (min_id) fetch — a single
+                // limit=20 page here would silently drop anything past the
+                // 20th item whenever more than 20 notifications piled up
+                // since the last poll, so the actual unread count/list and
+                // the marker we advance to must come from this, not from
+                // the display fetch.
+                Mastodon.fetchNewNotifications(instance, token, knownMarker, excludeTypesList, function (err, newItems) {
+                    if (!root.sessionActive || gen !== root.pollGeneration)
+                        return;
+                    if (err || !Array.isArray(newItems)) {
+                        root.errorMessage = root.describeError(err);
+                        return;
+                    }
+                    root.errorMessage = "";
 
-                Mastodon.postMarker(instance, token, newItems[0].id);
-                unreadCount = root.onDesktop ? 0 : unread;
+                    const unread = newItems.length;
+                    if (unread === 0)
+                        return;
+
+                    if (unread > 3) {
+                        root.notifySummary(unread);
+                    } else {
+                        for (const it of newItems)
+                            root.notifyItem(it);
+                    }
+
+                    Mastodon.postMarker(instance, token, newItems[0].id);
+                    unreadCount = root.onDesktop ? 0 : unread;
+                });
             });
         });
     }

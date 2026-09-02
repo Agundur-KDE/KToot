@@ -17,5 +17,5 @@
         "Version": "0.1",
         "Website": "https://github.com/Agundur-KDE/KToot"
     },
-    "X-Plasma-API-Minimum-Version": "6.0"
+    "X-Plasma-API-Minimum-Version": "6.2"
 }

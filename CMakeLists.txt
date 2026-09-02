@@ -14,7 +14,6 @@ include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(KDECompilerSettings NO_POLICY_SCOPE)
 include(ECMFindQmlModule)
-include(ECMQmlModule)
 include(ECMAddTests)
 include(ECMInstallIcons)
 
@@ -29,7 +28,6 @@ find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS
     Config
     I18n
     KCMUtils
-    Wallet
     Notifications
     IconThemes
 )
@@ -45,7 +43,6 @@ ki18n_install(translate
     INSTALL_DESTINATION ${KDE_INSTALL_LOCALEDIR}
 )
 
-add_subdirectory(package)
 add_subdirectory(tests)
 
 install(FILES
@@ -63,9 +60,8 @@ ecm_install_icons(ICONS
 )
 
 # Only ship metadata.json + contents/ (QML, config, translations) — a blanket
-# install(DIRECTORY package/) would also ship plugin/*.cpp,h,CMakeLists.txt
-# as inert data files next to the actually-used compiled plugin, which
-# ecm_add_qml_module already installs to the Qt QML plugin dir above.
+# install(DIRECTORY package/) would also ship package/metadata/ (icons,
+# notifyrc), which are already installed to their own KDE locations below.
 install(FILES package/metadata.json
         DESTINATION ${KDE_INSTALL_DATADIR}/plasma/plasmoids/de.agundur.ktoot)
 

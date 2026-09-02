@@ -8,7 +8,6 @@ import QtQuick.Controls as QtControls
 import QtQuick.Layouts
 import org.kde.kcmutils as KCM
 import org.kde.kirigami as Kirigami
-import de.agundur.ktoot
 import "mastodon.js" as Mastodon
 
 KCM.SimpleKCM {
@@ -16,6 +15,10 @@ KCM.SimpleKCM {
 
     property string cfg_Instance
     property string cfg_AccountHandle
+
+    WalletDBus {
+        id: wallet
+    }
 
     // Tracks whether a token is already stored for the current instance,
     // so the field can show "already saved" instead of demanding re-entry.
@@ -30,7 +33,9 @@ KCM.SimpleKCM {
     property bool statusIsError: false
 
     function refreshStoredState() {
-        hasStoredToken = WalletHelper.readToken(cfg_Instance).length > 0;
+        wallet.readToken(cfg_Instance, function (token) {
+            hasStoredToken = token.length > 0;
+        });
     }
 
     Component.onCompleted: refreshStoredState()
@@ -99,40 +104,50 @@ KCM.SimpleKCM {
             return;
         }
 
-        const tokenToTest = typedToken.length > 0 ? typedToken : WalletHelper.readToken(instance);
-        if (!tokenToTest) {
-            root.setStatus(i18n("Bitte Zugriffstoken einfügen."), true);
-            return;
+        function proceedWithToken(tokenToTest) {
+            if (!tokenToTest) {
+                root.setStatus(i18n("Bitte Zugriffstoken einfügen."), true);
+                return;
+            }
+
+            root.setStatus(i18n("Teste Verbindung …"), false);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", instance + "/api/v1/accounts/verify_credentials");
+            xhr.setRequestHeader("Authorization", "Bearer " + tokenToTest);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE)
+                    return;
+
+                if (xhr.status === 200) {
+                    const data = JSON.parse(xhr.responseText);
+                    const host = instance.replace(/^https?:\/\//, "");
+                    cfg_AccountHandle = "@" + data.acct + "@" + host;
+                    cfg_Instance = instance;
+
+                    if (typedToken.length > 0) {
+                        wallet.saveToken(instance, typedToken, function () {
+                            root.refreshStoredState();
+                        });
+                    } else {
+                        root.refreshStoredState();
+                    }
+
+                    tokenField.text = "";
+                    // Clear the override — the label falls back to the
+                    // cfg_AccountHandle binding, which already shows the
+                    // same "Verbunden als %1" text.
+                    root.setStatus("", false);
+                } else {
+                    root.setStatus(i18n("Fehler (%1): Token/Instance prüfen.", xhr.status), true);
+                }
+            };
+            xhr.send();
         }
 
-        root.setStatus(i18n("Teste Verbindung …"), false);
-
-        const xhr = new XMLHttpRequest();
-        xhr.open("GET", instance + "/api/v1/accounts/verify_credentials");
-        xhr.setRequestHeader("Authorization", "Bearer " + tokenToTest);
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return;
-
-            if (xhr.status === 200) {
-                const data = JSON.parse(xhr.responseText);
-                const host = instance.replace(/^https?:\/\//, "");
-                cfg_AccountHandle = "@" + data.acct + "@" + host;
-                cfg_Instance = instance;
-
-                if (typedToken.length > 0)
-                    WalletHelper.saveToken(instance, typedToken);
-
-                tokenField.text = "";
-                root.refreshStoredState();
-                // Clear the override — the label falls back to the
-                // cfg_AccountHandle binding, which already shows the same
-                // "Verbunden als %1" text.
-                root.setStatus("", false);
-            } else {
-                root.setStatus(i18n("Fehler (%1): Token/Instance prüfen.", xhr.status), true);
-            }
-        };
-        xhr.send();
+        if (typedToken.length > 0)
+            proceedWithToken(typedToken);
+        else
+            wallet.readToken(instance, proceedWithToken);
     }
 }
