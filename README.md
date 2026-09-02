@@ -78,23 +78,12 @@ kpackagetool6 --type Plasma/Applet --upgrade package/
 
 Then add it via *Add Widgets* on your panel/desktop, or test in an isolated window with `plasmoidviewer -a de.agundur.ktoot`.
 
-Note: `kpackagetool6` only installs into `~/.local/share/plasma/plasmoids/` — the app icon and the `ktoot.notifyrc` (desktop notification config) aren't registered system-wide that way. For a full system install (icons in the hicolor theme, KNotify registration, distro packaging), use the CMake build below.
-
-## Build (full system install / packaging)
-
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-sudo make install
-```
-
-To remove a previous CMake-installed version cleanly (e.g. before reinstalling after an update), run `sudo make uninstall` from the *same* build directory **before** reconfiguring — it uses that build's `install_manifest.txt` to remove exactly what was installed.
+Note: `kpackagetool6` only installs into `~/.local/share/plasma/plasmoids/` — the app icon and the `ktoot.notifyrc` (desktop notification config) aren't registered system-wide that way. A full system install (icons in the hicolor theme, KNotify registration, distro packaging) goes through the CMake build instead.
 
 ## Test
 
 ```bash
-cd build
+mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug
 make tst_plasmoid
 ctest --output-on-failure
