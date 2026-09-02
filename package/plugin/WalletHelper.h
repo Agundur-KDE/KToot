@@ -37,7 +37,7 @@ public:
 
     Q_INVOKABLE bool saveToken(const QString &instance, const QString &token);
     Q_INVOKABLE QString readToken(const QString &instance);
-    Q_INVOKABLE void removeToken(const QString &instance);
+    Q_INVOKABLE bool removeToken(const QString &instance);
 
 private:
     // Returns the shared wallet handle, opening it on first use. nullptr on

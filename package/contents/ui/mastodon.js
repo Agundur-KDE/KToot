@@ -27,7 +27,10 @@ function stripHtml(html) {
 function secondsSince(isoString) {
     if (!isoString)
         return 0;
-    return Math.max(0, Math.floor((Date.now() - Date.parse(isoString)) / 1000));
+    const parsed = Date.parse(isoString);
+    if (Number.isNaN(parsed))
+        return 0;
+    return Math.max(0, Math.floor((Date.now() - parsed) / 1000));
 }
 
 // "Activity on your posts" (mention/favourite/reblog) all share the KToot
@@ -46,10 +49,6 @@ function typeIcon(type) {
     default: return "ktoot";
     }
 }
-
-// Notification types we know how to handle. Anything else (poll, status,
-// follow_request, update, ...) is always excluded server-side.
-const KNOWN_TYPES = ["mention", "quote", "follow", "favourite", "reblog"];
 
 function excludeTypes(cfg) {
     const excl = [];
@@ -71,8 +70,15 @@ function notificationActor(item) {
     return item.account ? item.account.acct : "?";
 }
 
+// A status behind a content warning (status.sensitive) must never leak its
+// body into a desktop notification or the panel list — only the author's
+// own spoiler_text (the warning label itself) is safe to show.
 function notificationText(item) {
-    if (item.status && item.status.content)
+    if (!item.status)
+        return "";
+    if (item.status.sensitive)
+        return String(item.status.spoiler_text || "");
+    if (item.status.content)
         return stripHtml(item.status.content);
     return "";
 }
@@ -86,6 +92,37 @@ function toModelEntry(item) {
         text: notificationText(item),
         createdAt: item.created_at || ""
     };
+}
+
+// Accepts only "https://host" or "https://host:port" — no path, query,
+// fragment, or embedded credentials. The Bearer token goes to this origin
+// on every request, so this is checked both in the config UI and again
+// here, since Plasmoid.configuration can be edited outside the config UI.
+function isValidInstanceUrl(url) {
+    return /^https:\/\/[a-zA-Z0-9.-]+(:[0-9]+)?$/.test(String(url || ""));
+}
+
+function buildUrl(instance, path) {
+    if (!isValidInstanceUrl(instance))
+        return null;
+    return instance + path;
+}
+
+// Classifies a fetch error into a code main.qml can turn into user-facing
+// text (i18n() isn't available in this isolated .pragma context — see the
+// note on notificationActor()). httpStatus is set by httpGet() below on any
+// non-2xx response; its absence means a transport-level failure (DNS,
+// timeout, connection refused) or a JSON.parse() error.
+function classifyError(err) {
+    if (!err)
+        return "none";
+    if (err.httpStatus === 401 || err.httpStatus === 403)
+        return "unauthorized";
+    if (err.httpStatus === 429)
+        return "rateLimited";
+    if (err.httpStatus)
+        return "serverError";
+    return "network";
 }
 
 function httpGet(url, token, callback) {
@@ -102,18 +139,30 @@ function httpGet(url, token, callback) {
                 callback(e, null);
             }
         } else {
-            callback(new Error("HTTP " + xhr.status), null);
+            const err = new Error("HTTP " + xhr.status);
+            err.httpStatus = xhr.status;
+            callback(err, null);
         }
     };
     xhr.send();
 }
 
 function fetchAccount(instance, token, callback) {
-    httpGet(instance + "/api/v1/accounts/verify_credentials", token, callback);
+    const url = buildUrl(instance, "/api/v1/accounts/verify_credentials");
+    if (!url) {
+        callback(new Error("invalid instance url"), null);
+        return;
+    }
+    httpGet(url, token, callback);
 }
 
 function fetchMarker(instance, token, callback) {
-    httpGet(instance + "/api/v1/markers?timeline[]=notifications", token, function (err, data) {
+    const url = buildUrl(instance, "/api/v1/markers?timeline[]=notifications");
+    if (!url) {
+        callback(new Error("invalid instance url"), null);
+        return;
+    }
+    httpGet(url, token, function (err, data) {
         if (err) {
             callback(err, null);
             return;
@@ -124,8 +173,13 @@ function fetchMarker(instance, token, callback) {
 }
 
 function postMarker(instance, token, notifId) {
+    const url = buildUrl(instance, "/api/v1/markers");
+    if (!url) {
+        console.warn("KToot: postMarker skipped — invalid instance url");
+        return;
+    }
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", instance + "/api/v1/markers");
+    xhr.open("POST", url);
     xhr.setRequestHeader("Authorization", "Bearer " + token);
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
     xhr.onreadystatechange = function () {
@@ -137,9 +191,57 @@ function postMarker(instance, token, notifId) {
     xhr.send("notifications[last_read_id]=" + encodeURIComponent(notifId));
 }
 
+// Latest page only — used to populate the "last 3 notifications" display,
+// which always shows the newest items regardless of read state.
 function fetchNotifications(instance, token, excludeTypesList, callback) {
-    let url = instance + "/api/v1/notifications?limit=20";
+    let url = buildUrl(instance, "/api/v1/notifications?limit=20");
+    if (!url) {
+        callback(new Error("invalid instance url"), null);
+        return;
+    }
     for (const t of excludeTypesList)
         url += "&exclude_types[]=" + encodeURIComponent(t);
     httpGet(url, token, callback);
+}
+
+// Everything newer than minId, paginated via max_id. A single limit=20 page
+// silently dropped anything beyond the 20th item whenever more than 20
+// notifications had piled up since the last poll — this walks pages (using
+// the server-side min_id filter, so client-side ID comparison isn't needed
+// to find the boundary) until a short page signals "no more", capped at
+// maxPages so one very stale marker can't turn a poll into an unbounded
+// request storm.
+function fetchNewNotifications(instance, token, minId, excludeTypesList, callback) {
+    const limit = 20;
+    const maxPages = 5;
+    let all = [];
+
+    function fetchPage(maxId, pageNum) {
+        let url = buildUrl(instance, "/api/v1/notifications?limit=" + limit);
+        if (!url) {
+            callback(new Error("invalid instance url"), null);
+            return;
+        }
+        for (const t of excludeTypesList)
+            url += "&exclude_types[]=" + encodeURIComponent(t);
+        if (minId)
+            url += "&min_id=" + encodeURIComponent(minId);
+        if (maxId)
+            url += "&max_id=" + encodeURIComponent(maxId);
+
+        httpGet(url, token, function (err, items) {
+            if (err || !items) {
+                callback(err, null);
+                return;
+            }
+            all = all.concat(items);
+            const pageWasFull = items.length === limit;
+            if (pageWasFull && pageNum < maxPages)
+                fetchPage(items[items.length - 1].id, pageNum + 1);
+            else
+                callback(null, all);
+        });
+    }
+
+    fetchPage(null, 1);
 }

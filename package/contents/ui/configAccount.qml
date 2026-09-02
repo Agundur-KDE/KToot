@@ -9,6 +9,7 @@ import QtQuick.Layouts
 import org.kde.kcmutils as KCM
 import org.kde.kirigami as Kirigami
 import de.agundur.ktoot
+import "mastodon.js" as Mastodon
 
 KCM.SimpleKCM {
     id: root
@@ -19,6 +20,14 @@ KCM.SimpleKCM {
     // Tracks whether a token is already stored for the current instance,
     // so the field can show "already saved" instead of demanding re-entry.
     property bool hasStoredToken: false
+
+    // Transient testAndSave() status (validation error, "testing…", HTTP
+    // error). Empty means "no override" — the label falls back to deriving
+    // its text/color from cfg_AccountHandle. Keeps the label's visual
+    // properties bound to data instead of imperatively overwritten, so they
+    // stay correct if cfg_AccountHandle ever changes from outside this file.
+    property string statusMessage: ""
+    property bool statusIsError: false
 
     function refreshStoredState() {
         hasStoredToken = WalletHelper.readToken(cfg_Instance).length > 0;
@@ -62,11 +71,18 @@ KCM.SimpleKCM {
             id: statusLabel
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: cfg_AccountHandle
-                ? i18n("Verbunden als %1", cfg_AccountHandle)
-                : i18n("Noch nicht verbunden")
-            color: cfg_AccountHandle ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
+            text: root.statusMessage.length > 0
+                ? root.statusMessage
+                : (cfg_AccountHandle ? i18n("Verbunden als %1", cfg_AccountHandle) : i18n("Noch nicht verbunden"))
+            color: root.statusMessage.length > 0
+                ? (root.statusIsError ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.disabledTextColor)
+                : (cfg_AccountHandle ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor)
         }
+    }
+
+    function setStatus(message, isError) {
+        statusMessage = message;
+        statusIsError = isError;
     }
 
     function testAndSave() {
@@ -74,20 +90,22 @@ KCM.SimpleKCM {
         const typedToken = tokenField.text;
 
         if (!instance) {
-            statusLabel.text = i18n("Bitte Instance-URL eintragen.");
-            statusLabel.color = Kirigami.Theme.negativeTextColor;
+            root.setStatus(i18n("Bitte Instance-URL eintragen."), true);
+            return;
+        }
+
+        if (!Mastodon.isValidInstanceUrl(instance)) {
+            root.setStatus(i18n("Nur https://-Instances ohne Pfad/Zugangsdaten erlaubt."), true);
             return;
         }
 
         const tokenToTest = typedToken.length > 0 ? typedToken : WalletHelper.readToken(instance);
         if (!tokenToTest) {
-            statusLabel.text = i18n("Bitte Zugriffstoken einfügen.");
-            statusLabel.color = Kirigami.Theme.negativeTextColor;
+            root.setStatus(i18n("Bitte Zugriffstoken einfügen."), true);
             return;
         }
 
-        statusLabel.text = i18n("Teste Verbindung …");
-        statusLabel.color = Kirigami.Theme.disabledTextColor;
+        root.setStatus(i18n("Teste Verbindung …"), false);
 
         const xhr = new XMLHttpRequest();
         xhr.open("GET", instance + "/api/v1/accounts/verify_credentials");
@@ -107,11 +125,12 @@ KCM.SimpleKCM {
 
                 tokenField.text = "";
                 root.refreshStoredState();
-                statusLabel.text = i18n("Verbunden als %1", cfg_AccountHandle);
-                statusLabel.color = Kirigami.Theme.positiveTextColor;
+                // Clear the override — the label falls back to the
+                // cfg_AccountHandle binding, which already shows the same
+                // "Verbunden als %1" text.
+                root.setStatus("", false);
             } else {
-                statusLabel.text = i18n("Fehler (%1): Token/Instance prüfen.", xhr.status);
-                statusLabel.color = Kirigami.Theme.negativeTextColor;
+                root.setStatus(i18n("Fehler (%1): Token/Instance prüfen.", xhr.status), true);
             }
         };
         xhr.send();

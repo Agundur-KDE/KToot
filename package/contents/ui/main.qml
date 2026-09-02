@@ -20,8 +20,17 @@ PlasmoidItem {
     property bool sessionActive: false
     property int followersCount: 0
     property int unreadCount: 0
+    property string errorMessage: ""
 
     property ListModel notificationsModel: ListModel {}
+
+    // Bumped on every instance switch and connect/disconnect. Async
+    // callbacks capture the generation at request time and discard their
+    // result if it no longer matches — otherwise a slow response from the
+    // previous instance/session can land after a switch and contaminate the
+    // new one (wrong follower count, wrong notifications, a notification
+    // fired for the wrong account).
+    property int pollGeneration: 0
 
     preferredRepresentation: onDesktop ? fullRepresentation : compactRepresentation
 
@@ -55,6 +64,7 @@ PlasmoidItem {
         let title;
         switch (item.type) {
         case "mention": title = i18n("%1 hat dich erwähnt", actor); break;
+        case "quote": title = i18n("%1 hat deinen Post zitiert", actor); break;
         case "follow": title = i18n("%1 folgt dir jetzt", actor); break;
         case "favourite": title = i18n("%1 hat deinen Post favorisiert", actor); break;
         case "reblog": title = i18n("%1 hat deinen Post geboostet", actor); break;
@@ -71,6 +81,16 @@ PlasmoidItem {
         mentionNotification.sendEvent();
     }
 
+    function describeError(err) {
+        switch (Mastodon.classifyError(err)) {
+        case "unauthorized": return i18n("Zugriffstoken ungültig — bitte neu verbinden.");
+        case "rateLimited": return i18n("Instance blockt gerade (zu viele Anfragen) — versucht es später erneut.");
+        case "serverError": return i18n("Instance antwortet mit einem Fehler.");
+        case "network": return i18n("Verbindung zur Instance fehlgeschlagen.");
+        default: return "";
+        }
+    }
+
     function ensureToken() {
         if (!tokenLoaded) {
             accessToken = WalletHelper.readToken(instance);
@@ -82,10 +102,17 @@ PlasmoidItem {
     onInstanceChanged: {
         tokenLoaded = false;
         accessToken = "";
+        followersCount = 0;
+        unreadCount = 0;
+        errorMessage = "";
+        notificationsModel.clear();
+        pollGeneration++;
     }
 
     function connect() {
         sessionActive = true;
+        errorMessage = "";
+        pollGeneration++;
     }
 
     function disconnect() {
@@ -93,6 +120,8 @@ PlasmoidItem {
         accessToken = "";
         tokenLoaded = false;
         unreadCount = 0;
+        errorMessage = "";
+        pollGeneration++;
     }
 
     function markAllRead() {
@@ -110,43 +139,80 @@ PlasmoidItem {
         if (!token)
             return;
 
+        // Captured now, checked in every callback below: a response that
+        // arrives after the instance/session has since changed is stale and
+        // must not touch state for the new one.
+        const gen = root.pollGeneration;
+
         Mastodon.fetchAccount(instance, token, function (err, account) {
-            if (!err && account && root.sessionActive)
+            if (!root.sessionActive || gen !== root.pollGeneration)
+                return;
+            if (err) {
+                root.errorMessage = root.describeError(err);
+                return;
+            }
+            if (account)
                 followersCount = account.followers_count;
         });
 
         Mastodon.fetchMarker(instance, token, function (markerErr, knownMarker) {
+            if (!root.sessionActive || gen !== root.pollGeneration)
+                return;
+
             // Marker fetch failed: we can't tell what's actually new, so
             // treating a missing marker as "0" would flag the whole page as
             // unread. Skip this cycle instead, retry on the next tick.
-            if (markerErr || !root.sessionActive)
+            if (markerErr) {
+                root.errorMessage = root.describeError(markerErr);
                 return;
+            }
 
             const isFirstEverPoll = knownMarker === null;
+            const excludeTypesList = Mastodon.excludeTypes(Plasmoid.configuration);
 
-            Mastodon.fetchNotifications(instance, token, Mastodon.excludeTypes(Plasmoid.configuration), function (err, items) {
-                if (err || !items || !root.sessionActive)
+            // Display always shows the newest items regardless of read
+            // state, so it's fetched separately from unread detection below.
+            Mastodon.fetchNotifications(instance, token, excludeTypesList, function (err, items) {
+                if (!root.sessionActive || gen !== root.pollGeneration)
                     return;
+                if (err || !Array.isArray(items)) {
+                    root.errorMessage = root.describeError(err);
+                    return;
+                }
+                root.errorMessage = "";
 
                 notificationsModel.clear();
                 for (let i = 0; i < Math.min(3, items.length); i++)
                     notificationsModel.append(Mastodon.toModelEntry(items[i]));
 
-                if (items.length === 0)
-                    return;
-
-                const newestId = items[0].id;
-
-                if (isFirstEverPoll) {
+                if (items.length > 0 && isFirstEverPoll) {
                     // Never polled this account before: establish a baseline
                     // instead of dumping the whole backlog as "new".
-                    Mastodon.postMarker(instance, token, newestId);
+                    Mastodon.postMarker(instance, token, items[0].id);
                     unreadCount = 0;
+                }
+            });
+
+            if (isFirstEverPoll)
+                return;
+
+            // Paginated, server-filtered (min_id) fetch — a single limit=20
+            // page here would silently drop anything past the 20th item
+            // whenever more than 20 notifications piled up since the last
+            // poll, so the actual unread count/list and the marker we
+            // advance to must come from this, not from the display fetch.
+            Mastodon.fetchNewNotifications(instance, token, knownMarker, excludeTypesList, function (err, newItems) {
+                if (!root.sessionActive || gen !== root.pollGeneration)
+                    return;
+                if (err || !Array.isArray(newItems)) {
+                    root.errorMessage = root.describeError(err);
                     return;
                 }
+                root.errorMessage = "";
 
-                const newItems = items.filter(it => Mastodon.idGreaterThan(it.id, knownMarker));
                 const unread = newItems.length;
+                if (unread === 0)
+                    return;
 
                 if (unread > 3) {
                     root.notifySummary(unread);
@@ -155,9 +221,7 @@ PlasmoidItem {
                         root.notifyItem(it);
                 }
 
-                if (unread > 0)
-                    Mastodon.postMarker(instance, token, newestId);
-
+                Mastodon.postMarker(instance, token, newItems[0].id);
                 unreadCount = root.onDesktop ? 0 : unread;
             });
         });
@@ -175,6 +239,7 @@ PlasmoidItem {
     fullRepresentation: ColumnLayout {
         Layout.minimumWidth: 340
         Layout.minimumHeight: 320
+        anchors.fill: parent
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
@@ -239,6 +304,15 @@ PlasmoidItem {
         Kirigami.Separator {
             visible: root.accountConnected && root.sessionActive
             Layout.fillWidth: true
+        }
+
+        PlasmaComponents.Label {
+            visible: root.accountConnected && root.sessionActive && root.errorMessage.length > 0
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            text: root.errorMessage
+            color: Kirigami.Theme.negativeTextColor
+            horizontalAlignment: Text.AlignHCenter
         }
 
         PlasmaComponents.Label {

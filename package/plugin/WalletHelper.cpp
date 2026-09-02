@@ -84,11 +84,15 @@ QString WalletHelper::readToken(const QString &instance)
     return token;
 }
 
-void WalletHelper::removeToken(const QString &instance)
+bool WalletHelper::removeToken(const QString &instance)
 {
     if (!ensureFolder())
-        return;
+        return false;
 
-    if (wallet()->removeEntry(instance) != 0)
+    if (wallet()->removeEntry(instance) != 0) {
         qWarning() << "WalletHelper: could not remove the stored token for" << instance;
+        return false;
+    }
+
+    return true;
 }
