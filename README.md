@@ -1,8 +1,9 @@
 <div align="center">
-  <h1>KDE Plasma 6 Plasmoid Template</h1>
+  <h1>KToot</h1>
+  <p><strong>Mastodon notification widget for KDE Plasma 6</strong></p>
 
   <a href="https://kde.org/">
-    <img src="https://img.shields.io/badge/KDE_Plasma-6.7+-blue?style=flat&logo=kde" alt="KDE Plasma 6">
+    <img src="https://img.shields.io/badge/KDE_Plasma-6.2+-blue?style=flat&logo=kde" alt="KDE Plasma 6.2+">
   </a>
   <a href="https://www.gnu.org/licenses/gpl-3.0.html">
     <img src="https://img.shields.io/badge/License-GPL--2.0%2B-blue.svg" alt="License: GPL-2.0+">
@@ -15,19 +16,42 @@
   </a>
 </div>
 
-## What's included
+KToot puts your Mastodon notifications in the Plasma panel: an icon with an
+unread badge, and a popup showing your latest mentions, follows, favourites
+and boosts. Click to mark everything read, or let desktop notifications
+(via KNotify) tell you as things happen.
 
-A clean, minimal starting point for a **KDE Plasma 6 Plasmoid** — pure QML, no boilerplate:
+## Features
 
 | Feature | Details |
 |---|---|
-| Compact + Full representation | Panel icon expands to full popup |
-| Config dialog | `configNetwork.qml` with KCM.SimpleKCM + `main.xml` for persistent settings |
-| i18n | `translate/` with `.po` files for de, en, es, fr — `ki18n_install` wired up |
-| Qt Quick Test | `tests/tst_plasmoid.qml` — run with `ctest` |
-| Clean CMake | Only what's needed: ECM, KF6 Config/I18n/KCMUtils, Qt6 Quick/Test |
+| Panel icon + unread badge | Click marks everything read |
+| Full popup | Account handle, follower count, last 3 notifications |
+| Desktop notifications | Per-notification for small backlogs, one summary popup for a large one |
+| Per-type toggles | Show/hide mentions, follows, favourites, boosts individually |
+| Pure QML/JS | No compiled plugin — KWallet access goes over D-Bus, not a C++ helper |
+| i18n | `translate/` with `.po` files for de, en, es, fr |
+| Tests | `tests/tst_mastodon.qml` (pure logic) + `tests/tst_plasmoid.qml`, run with `ctest` |
+
+## Creating a Mastodon access token
+
+KToot needs a personal access token for your account — not your password.
+Create one on your own instance:
+
+1. Go to **Settings → Development** (`https://<your-instance>/settings/applications`) and click **New application**.
+2. Give it a name (e.g. "KToot"). Leave **Redirect URI** at its default (`urn:ietf:wg:oauth:2.0:oob`) — KToot doesn't use an OAuth redirect flow.
+3. Under **Scopes**, `read` and `write` are enough (`read` covers accounts/notifications, `write` is needed so KToot can mark notifications as read via the markers API).
+4. Save. Your instance shows the application's credentials immediately — copy **Your access token** (not the client key/secret):
+
+   ![Mastodon "New application" page showing the access token field](docs/mastodon-access-token.png)
+
+5. In KToot's settings, enter your instance URL (must be `https://…`) and paste the token into **Access token**, then click **Verbindung testen & speichern** ("Test connection & save"). The token is stored in KWallet, keyed by instance URL — never in the plasmoid's config file.
 
 ## Requirements
+
+**Runtime** (using the plasmoid): KDE Plasma ≥ 6.2 (for the `org.kde.plasma.workspace.dbus` QML module KToot uses to talk to KWallet) and a running `kwalletd6`.
+
+**Building** (only needed for a full system install, e.g. RPM packaging — see [Install](#install) below):
 
 - Qt ≥ 6.7
 - KDE Frameworks ≥ 6.10
@@ -37,21 +61,38 @@ A clean, minimal starting point for a **KDE Plasma 6 Plasmoid** — pure QML, no
 On openSUSE Tumbleweed:
 ```bash
 sudo zypper install cmake extra-cmake-modules kf6-ki18n-devel kf6-kconfigwidgets-devel \
-     kf6-kcmutils-devel qt6-quick-devel qt6-test-devel
+     kf6-kcmutils-devel kf6-notifications-devel kf6-iconthemes-devel \
+     qt6-quick-devel qt6-test-devel qt6-quicktest-devel
 ```
 
-On Arch / KDE neon / Ubuntu with KDE PPA — install the equivalent `*-dev` packages.
+On Arch / KDE neon / Ubuntu with KDE PPA — install the equivalent `*-dev`/`-devel` packages.
 
-## Build
+## Install
+
+KToot is pure QML/JS — no compiled plugin — so a plain `kpackagetool6` install is enough for everyday use, no root and no build step required:
 
 ```bash
-git clone https://github.com/Agundur-KDE/KDE-Plasma-Plasmoid-template.git
-cd KDE-Plasma-Plasmoid-template
+git clone https://github.com/Agundur-KDE/KToot.git
+cd KToot
+kpackagetool6 --type Plasma/Applet --install package/
+# to update after a git pull:
+kpackagetool6 --type Plasma/Applet --upgrade package/
+```
+
+Then add it via *Add Widgets* on your panel/desktop, or test in an isolated window with `plasmoidviewer -a de.agundur.ktoot`.
+
+Note: `kpackagetool6` only installs into `~/.local/share/plasma/plasmoids/` — the app icon and the `ktoot.notifyrc` (desktop notification config) aren't registered system-wide that way. For a full system install (icons in the hicolor theme, KNotify registration, distro packaging), use the CMake build below.
+
+## Build (full system install / packaging)
+
+```bash
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 sudo make install
 ```
+
+To remove a previous CMake-installed version cleanly (e.g. before reinstalling after an update), run `sudo make uninstall` from the *same* build directory **before** reconfiguring — it uses that build's `install_manifest.txt` to remove exactly what was installed.
 
 ## Test
 
@@ -62,35 +103,7 @@ make tst_plasmoid
 ctest --output-on-failure
 ```
 
-Tests live in `tests/tst_plasmoid.qml`. Add `TestCase { }` blocks there as your plasmoid grows.
-
-## Rename for your project
-
-After cloning, run the interactive rename script once:
-
-```bash
-bash rename.sh
-```
-
-It replaces all occurrences of `de.agundur.ktoot` / `ktoot` / `KToot`,
-renames the `.po` translation files, and updates `metadata.json` (name, description, author, URLs).
-
-## Quick install without CMake (for development)
-
-```bash
-kpackagetool6 --install package/
-# reload with:
-plasmoidviewer -a de.agundur.ktoot
-# or on Wayland:
-QT_QPA_PLATFORM=xcb plasmoidviewer -a de.agundur.ktoot
-```
-
-## Customising
-
-1. **Rename** — find/replace `de.agundur.ktoot` and `ktoot` in `CMakeLists.txt` and `package/metadata.json`
-2. **UI** — edit `package/contents/ui/FullRepresentation.qml` for the popup content
-3. **Settings** — add entries to `package/contents/config/main.xml` and a matching field in `configNetwork.qml`
-4. **C++ plugin** — uncomment `add_subdirectory(plugin)` in `package/CMakeLists.txt` and add your plugin there
+`tst_mastodon.qml` covers the pure logic in `mastodon.js` (ID comparison, content-warning handling, instance URL validation, error classification, …); `tst_plasmoid.qml` is the QtQuickTest entry point.
 
 ## Contributing
 
