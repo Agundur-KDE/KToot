@@ -43,6 +43,7 @@ Create one on your own instance:
    ![Mastodon "New application" page showing the access token field](docs/mastodon-access-token.png)
 
 5. In KToot's settings, enter your instance URL (must be `https://…`) and paste the token into **Access token**, then click **Verbindung testen & speichern** ("Test connection & save"). The token is stored in KWallet, keyed by instance URL — never in the plasmoid's config file.
+6. Open the widget popup and click **Connect** — the popup shows "Getrennt" (disconnected) until you do, even with a saved token.
 
 ## Requirements
 
@@ -66,7 +67,9 @@ On Arch / KDE neon / Ubuntu with KDE PPA — install the equivalent `*-dev`/`-de
 
 ## Install
 
-KToot is pure QML/JS — no compiled plugin — so a plain `kpackagetool6` install is enough for everyday use, no root and no build step required:
+Pre-built packages are on the [releases page](https://github.com/Agundur-KDE/KToot/releases/latest): `.plasmoid` (plain KPackage archive, install via `kpackagetool6 -i`), `.rpm` (openSUSE, also available via the [OBS repo](https://download.opensuse.org/repositories/home:/Agundur/openSUSE_Tumbleweed/)), and `.deb` (Debian 13 "Trixie" / `sudo apt install ./ktoot_*.deb`).
+
+To build from source, KToot is pure QML/JS — no compiled plugin — so a plain `kpackagetool6` install is enough for everyday use, no root and no build step required:
 
 ```bash
 git clone https://github.com/Agundur-KDE/KToot.git
