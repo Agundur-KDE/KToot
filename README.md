@@ -18,6 +18,8 @@ unread badge, and a popup showing your latest mentions, follows, favourites
 and boosts. Click to mark everything read, or let desktop notifications
 (via KNotify) tell you as things happen.
 
+Project page: [agundur.de/projects/ktoot](https://www.agundur.de/projects/ktoot_mastodon_notifications_for_kde.html)
+
 ## Features
 
 | Feature | Details |
