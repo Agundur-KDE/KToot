@@ -1,0 +1,16 @@
+specfile_path: packaging/ktoot.spec
+downstream_package_name: ktoot
+upstream_tag_template: "v{version}"
+
+actions:
+  create-archive:
+    - bash -lc 'VER=$(git describe --tags --abbrev=0 | sed "s/^v//"); git archive --format=tar --prefix=KToot-$VER/ v$VER | gzip -9 > KToot-$VER.tar.gz && echo KToot-$VER.tar.gz'
+  get-current-version:
+    - bash -lc "git describe --tags --abbrev=0 | sed 's/^v//'"
+
+jobs:
+  - job: copr_build
+    trigger: release           # nur neue Tags/Releases
+    owner: agundur
+    project: KToot
+    targets: ["fedora-42-x86_64"]

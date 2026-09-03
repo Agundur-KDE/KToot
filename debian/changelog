@@ -1,0 +1,10 @@
+ktoot (0.3.0-1) unstable; urgency=medium
+
+  * First public release: Mastodon notification widget for KDE Plasma 6.
+  * KWallet access moved to pure QML/D-Bus (org.kde.plasma.workspace.dbus),
+    C++ helper plugin removed — no compiled component, installs cleanly
+    via a plain kpackagetool6 -i/-u.
+  * Audit findings fixed: content-warning leak, marker loss, HTTPS
+    enforcement, session race.
+
+ -- Agundur <info@agundur.de>  Thu, 03 Sep 2026 12:00:00 +0200
